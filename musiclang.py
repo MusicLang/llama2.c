@@ -210,7 +210,10 @@ class PretokDataset(torch.utils.data.IterableDataset):
                 m = np.memmap(shard, dtype=np.uint16, mode="r")
                 num_batches = len(m) // self.max_seq_len
                 num_batches -= 1  # drop the last partial batch
-                assert num_batches > 0, "this shard is way too small? investigate."
+                if num_batches == 0:
+                    #print('Too small continuing ...')
+                    continue
+                #assert num_batches > 0, "this shard is way too small? investigate."
                 ixs = list(range(num_batches))
                 rng.shuffle(ixs)
                 for ix in ixs:
