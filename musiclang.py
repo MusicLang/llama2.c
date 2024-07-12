@@ -21,7 +21,7 @@ from tqdm import tqdm
 from tokenizer import Tokenizer
 
 DATA_CACHE_DIR = "data"
-DATA_DIR = '/root/musiclang_ml/data/tokens_bpe'
+DATA_DIR = '/data/tokens_bpe'
 
 
 def download_file(url: str, fname: str, chunk_size=1024):
@@ -82,13 +82,18 @@ def train_vocab(vocab_size):
     prefix = os.path.join(DATA_CACHE_DIR, f"tok{vocab_size}")
 
     # how many shards we'll use for vocab training, kept low for efficiency
-    num_shards = 50000
 
     # 1) export a large chunk of text as a single text file tiny.txt
     tiny_file = os.path.join(DATA_CACHE_DIR, "tiny.txt")
     data_dir = os.path.join(DATA_DIR)
     shard_filenames = sorted(glob.glob(os.path.join(data_dir, "*.txt")))
-    shard_filenames = ['/root/musiclang_ml/data/test_all_tokens.txt'] + shard_filenames
+    shard_filenames = ['data/test_all_tokens.txt'] + shard_filenames
+    num_shards = len(shard_filenames)
+
+    with open('data/replace_tokens.txt', 'r') as f:
+        characters_to_replace = f.read()
+    
+    translation_table = {ord(char): char + '\t' for char in characters_to_replace}
 
     print(f"Writing temporary file {tiny_file} with {num_shards} shards...")
     with open(tiny_file, "w", encoding="utf-8") as of:
@@ -96,6 +101,7 @@ def train_vocab(vocab_size):
             with open(shard, "r") as f:
                 data = f.read()
                 #text = text.strip()
+                data = data.translate(translation_table)
                 of.write(data + "\n")
     print(f"Size is: {os.path.getsize(tiny_file) / 1024 / 1024:.2f} MB")
 
@@ -126,7 +132,7 @@ def train_vocab(vocab_size):
     print("Done.")
 
 
-def process_shard(args, vocab_size):
+def process_shard_old(args, vocab_size):
     shard_id, shard = args
     tokenizer_model = get_tokenizer_model_path(vocab_size)
     enc = Tokenizer(tokenizer_model)
@@ -156,19 +162,50 @@ def process_shard(args, vocab_size):
     print(f"Saved {tokenized_filename}, average seqlen: {avg_seq_len:.2f}")
 
 
-def pretokenize(vocab_size):
-    # iterate the shards and tokenize all of them one by one
+def process_shard(args, vocab_size):
+    shard_id, shard_filenames = args
+    tokenizer_model = get_tokenizer_model_path(vocab_size)
+    enc = Tokenizer(tokenizer_model)
+    all_tokens = []
+    
+    for shard in shard_filenames:
+        with open(shard, "r") as f:
+            data = f.read()
+        tokens = enc.encode(data, bos=True, eos=False)  # encode the text, use BOS
+        all_tokens.extend(tokens)
+
+    # convert to uint16 nparray
+    all_tokens = np.array(all_tokens, dtype=np.uint16)
+
+    # Here, we'll just save one tokenized file per chunk instead of per file.
+    if vocab_size == 0:
+        tokenized_filename = f"chunk_{shard_id}.bin"
+    else:
+        bin_dir = os.path.join(DATA_CACHE_DIR, f"tok{vocab_size}")
+        tokenized_filename = os.path.join(bin_dir, f"chunk_{shard_id}.bin")
+
+    with open(tokenized_filename, "wb") as f:
+        f.write(all_tokens.tobytes())
+
+    avg_seq_len = all_tokens.size / ((all_tokens == 1).sum())
+    print(f"Saved {tokenized_filename}, average seqlen: {avg_seq_len:.2f}")
+
+
+def pretokenize(vocab_size, n_chunks=1000):
     data_dir = os.path.join(DATA_DIR)
-    shard_filenames = sorted(glob.glob(os.path.join(data_dir, "*.txt")))
+    all_filenames = sorted(glob.glob(os.path.join(data_dir, "*.txt")))
+    
+    # Split the filenames into chunks of size n_chunks
+    shard_filenames = [all_filenames[i:i + n_chunks] for i in range(0, len(all_filenames), n_chunks)]
+    
     if vocab_size > 0:
-        # .bin files will be saved into tok{N} directory, create it once here
         bin_dir = os.path.join(DATA_CACHE_DIR, f"tok{vocab_size}")
         os.makedirs(bin_dir, exist_ok=True)
 
-    # process all the shards in a process pool
     fun = partial(process_shard, vocab_size=vocab_size)
     with ProcessPoolExecutor() as executor:
         executor.map(fun, enumerate(shard_filenames))
+
     print("Done.")
 
 
