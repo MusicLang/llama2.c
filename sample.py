@@ -11,13 +11,13 @@ from tokenizer import Tokenizer
 from tinystories import get_tokenizer_model_path
 
 # -----------------------------------------------------------------------------
-checkpoint = 'out/ckpt.pt'
-start = "" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
+checkpoint = '/Users/floriangardin/code/music/llama2.c/data/model_large/ckpt.pt'
+start = "FILE:prompt.txt" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
 num_samples = 1 # number of samples to draw
-max_new_tokens = 100 # number of tokens generated in each sample
-temperature = 1.0 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
+max_new_tokens = 200 # number of tokens generated in each sample
+temperature = 0.001 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
 top_k = 300 # retain only the top_k most likely tokens, clamp others to have 0 probability
-tokenizer = "" # override the tokenizer model path
+tokenizer = "/Users/floriangardin/code/music/llama2.c/musiclang/musiclang_masking_large/tok16000.model" # override the tokenizer model path
 seed = 1337
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 #dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
@@ -75,5 +75,10 @@ with torch.no_grad():
     with ctx:
         for k in range(num_samples):
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print(enc.decode(y[0].tolist()))
+            y0 = y[0].tolist()
+            print(y0)
+            print('---------------')
+            res = enc.decode(y0)
+            # Cur res to first 1
+            print(res)
             print('---------------')
